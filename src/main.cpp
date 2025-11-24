@@ -26,7 +26,7 @@ int main()
 {
 	try
 	{
-		lab3();
+		lab4();
 	}
 	catch (string EX_INFO)
 	{
@@ -1293,7 +1293,401 @@ void lab3()
 }
 void lab4()
 {
-
+	// Link do Excela:
+	// https://docs.google.com/spreadsheets/d/1uA4HiqoUrM_W-bBBVQLqMggGkHxav8fk/edit?usp=sharing&ouid=117458587915467310851&rtpof=true&sd=true
+	
+	/*
+	Funkcja testowa Lab 4:
+	f(x1, x2) = (1/6)*x1^6 - 1.05*x1^4 + 2*x1^2 + x2^2 + x1*x2
+	
+	Punkt startowy: x1 ∈ [-2, 2], x2 ∈ [-2, 2]
+	
+	Metody optymalizacji:
+	1. Metoda najszybszego spadku (steepest descent)
+	2. Metoda gradientów sprzężonych (conjugate gradients)
+	3. Metoda Newtona (Newton's method)
+	
+	Każda metoda w dwóch wersjach:
+	- Stałokrokowa: długość kroku s = 0.05 oraz s = 0.25
+	- Zmiennokrokowa: długość kroku wyznaczana metodą złotego podziału
+	
+	Zadanie:
+	- 100 optymalizacji dla każdej długości kroku startując z losowego punktu
+	- Wyniki w pliku CSV (tabela 1 i tabela 2)
+	- Dla jednego wybranego punktu startowego: 6 wykresów
+	*/
+	
+	cout << "=== LAB 4: Optymalizacja gradientowa ===\n\n";
+	
+	// Parametry optymalizacji
+	double epsilon = 1e-4;
+	int Nmax = 10000;
+	
+	// Długości kroku dla wersji stałokrokowej
+	double step_sizes[2] = { 0.05, 0.25 };
+	
+	// Minimum globalne: około (0, 0) z wartością f ≈ 0
+	// (funkcja ma kilka minimów lokalnych)
+	
+	// Pliki CSV dla wyników
+	ofstream csv_tabela1("../data/lab4_tabela1.csv");
+	
+	cout << "TABELA 1 - Struktura kolumn (21 kolumn, 300 wierszy):\n";
+	cout << "  Kol 1-2:   x1(0), x2(0) - punkt startowy\n";
+	cout << "  Kol 3-8:   Metoda najszybszego spadku -> x1*, x2*, y*, fcalls, gcalls, minimum_globalne\n";
+	cout << "  Kol 9-14:  Metoda gradientów sprzężonych -> x1*, x2*, y*, fcalls, gcalls, minimum_globalne\n";
+	cout << "  Kol 15-21: Metoda Newtona -> x1*, x2*, y*, fcalls, gcalls, Hcalls, minimum_globalne\n";
+	cout << "  Wiersze 1-100:   krok = 0.05\n";
+	cout << "  Wiersze 101-200: krok = 0.25\n";
+	cout << "  Wiersze 201-300: krok zmiennokrokowy (złoty podział)\n\n";
+	
+	srand(time(nullptr));
+	
+	// Dla każdego rozmiaru kroku (0.05, 0.25, zmiennokrokowy)
+	for (int s_idx = 0; s_idx < 3; s_idx++)
+	{
+		double step_size = (s_idx < 2) ? step_sizes[s_idx] : -1.0; // -1 oznacza zmiennokrokowy
+		
+		if (s_idx < 2)
+			cout << "Analiza dla kroku stałego s = " << step_size << "\n";
+		else
+			cout << "Analiza dla kroku zmiennokrokowego (złoty podział)\n";
+		
+		// 100 optymalizacji dla każdej metody
+		for (int run = 0; run < 100; run++)
+		{
+			// Losowy punkt startowy w przedziale [-2, 2] x [-2, 2]
+			matrix x0(2, 1);
+			x0(0) = (rand() / (double)RAND_MAX) * 4.0 - 2.0;	// x1 ∈ [-2, 2]
+			x0(1) = (rand() / (double)RAND_MAX) * 4.0 - 2.0;	// x2 ∈ [-2, 2]
+			
+			// ===== METODA NAJSZYBSZEGO SPADKU =====
+			solution::clear_calls();
+			solution opt_sd = SD(ff4T, gf4T, x0, step_size, epsilon, Nmax);
+			
+			int sd_fcalls = solution::f_calls;
+			int sd_gcalls = solution::g_calls;
+			
+			// Sprawdzenie czy znaleziono minimum globalne
+			// Minimum globalne jest w okolicy (0, 0) lub innych punktów
+			// Dla uproszczenia: jeśli |x1| < 0.1 i |x2| < 0.1 i y < 0.1
+			bool is_global_sd = (abs(opt_sd.x(0)) < 0.5 && abs(opt_sd.x(1)) < 0.5 && opt_sd.y(0) < 0.1);
+			
+			// ===== METODA GRADIENTÓW SPRZĘŻONYCH =====
+			solution::clear_calls();
+			solution opt_cg = CG(ff4T, gf4T, x0, step_size, epsilon, Nmax);
+			
+			int cg_fcalls = solution::f_calls;
+			int cg_gcalls = solution::g_calls;
+			
+			bool is_global_cg = (abs(opt_cg.x(0)) < 0.5 && abs(opt_cg.x(1)) < 0.5 && opt_cg.y(0) < 0.1);
+			
+			// ===== METODA NEWTONA =====
+			solution::clear_calls();
+			solution opt_newton = Newton(ff4T, gf4T, Hf4T, x0, step_size, epsilon, Nmax);
+			
+			int newton_fcalls = solution::f_calls;
+			int newton_gcalls = solution::g_calls;
+			int newton_hcalls = solution::H_calls;
+			
+			bool is_global_newton = (abs(opt_newton.x(0)) < 0.5 && abs(opt_newton.x(1)) < 0.5 && opt_newton.y(0) < 0.1);
+			
+			// Zapisanie do tabeli 1
+			csv_tabela1 << x0(0) << "," << x0(1) << ","
+						<< opt_sd.x(0) << "," << opt_sd.x(1) << "," << opt_sd.y(0) << "," << sd_fcalls << "," << sd_gcalls << "," << (is_global_sd ? "TAK" : "NIE") << ","
+						<< opt_cg.x(0) << "," << opt_cg.x(1) << "," << opt_cg.y(0) << "," << cg_fcalls << "," << cg_gcalls << "," << (is_global_cg ? "TAK" : "NIE") << ","
+						<< opt_newton.x(0) << "," << opt_newton.x(1) << "," << opt_newton.y(0) << "," << newton_fcalls << "," << newton_gcalls << "," << newton_hcalls << "," << (is_global_newton ? "TAK" : "NIE") << "\n";
+		}
+		
+		cout << "  Zakończono 100 optymalizacji\n\n";
+	}
+	
+	csv_tabela1.close();
+	
+	cout << "Wyniki zapisane do: ../data/lab4_tabela1.csv\n\n";
+	
+	// ===== WYKRESY - ŚCIEŻKA OPTYMALIZACJI =====
+	cout << "Generowanie ścieżek optymalizacji dla wykresów...\n";
+	
+	// Losowy punkt startowy z przedziału [-2, 2]
+	matrix x0_plot = rand_mat(2);
+	for (int i = 0; i < 2; ++i)
+		x0_plot(i) = 4.0 * x0_plot(i) - 2.0;  // przeskalowanie z [0,1] do [-2,2]
+	
+	cout << "Punkt startowy dla wykresów: x1(0) = " << x0_plot(0) << ", x2(0) = " << x0_plot(1) << "\n\n";
+	
+	// Plik CSV dla wykresów
+	ofstream csv_wykresy("../data/lab4_wykresy.csv");
+	
+	// Dla każdej metody i każdego kroku zapisujemy historię punktów
+	vector<vector<matrix>> histories(9);  // 3 metody x 3 kroki
+	
+	double steps[3] = { 0.05, 0.25, -1.0 };  // -1.0 = zmiennokrokowy
+	
+	// Generowanie historii dla wszystkich kombinacji
+	for (int s_idx = 0; s_idx < 3; s_idx++)
+	{
+		double step = steps[s_idx];
+		
+		// SD
+		{
+			solution::clear_calls();
+			solution X(x0_plot);
+			X.fit_fun(ff4T);
+			X.grad(gf4T);
+			histories[s_idx].push_back(X.x);
+			
+			while (norm(X.g) >= epsilon && solution::f_calls < Nmax)
+			{
+				matrix d = -X.g;
+				double h;
+				
+				if (step > 0)
+				{
+					h = step;
+				}
+				else
+				{
+					// Golden search
+					double a = 0.0, b = 1.0;
+					solution X_test(X.x + b * d);
+					X_test.fit_fun(ff4T);
+					while (X_test.y < X.y && b < 100.0)
+					{
+						a = b; b *= 2.0;
+						X_test.x = X.x + b * d;
+						X_test.fit_fun(ff4T);
+					}
+					double phi = (1.0 + sqrt(5.0)) / 2.0;
+					double c = b - (b - a) / phi;
+					double d_gold = a + (b - a) / phi;
+					solution X_c(X.x + c * d), X_d(X.x + d_gold * d);
+					X_c.fit_fun(ff4T); X_d.fit_fun(ff4T);
+					while (abs(b - a) > 1e-6 && solution::f_calls < Nmax)
+					{
+						if (X_c.y < X_d.y)
+						{
+							b = d_gold; d_gold = c; X_d = X_c;
+							c = b - (b - a) / phi;
+							X_c.x = X.x + c * d; X_c.fit_fun(ff4T);
+						}
+						else
+						{
+							a = c; c = d_gold; X_c = X_d;
+							d_gold = a + (b - a) / phi;
+							X_d.x = X.x + d_gold * d; X_d.fit_fun(ff4T);
+						}
+					}
+					h = (a + b) / 2.0;
+				}
+				
+				X.x = X.x + h * d;
+				X.fit_fun(ff4T);
+				X.grad(gf4T);
+				histories[s_idx].push_back(X.x);
+				
+				if (solution::f_calls >= Nmax) break;
+			}
+		}
+		
+		// CG
+		{
+			solution::clear_calls();
+			solution X(x0_plot);
+			X.fit_fun(ff4T);
+			X.grad(gf4T);
+			matrix d = -X.g;
+			matrix g_prev = X.g;
+			histories[3 + s_idx].push_back(X.x);
+			
+			while (norm(X.g) >= epsilon && solution::f_calls < Nmax)
+			{
+				double h;
+				
+				if (step > 0)
+				{
+					h = step;
+				}
+				else
+				{
+					// Golden search
+					double a = 0.0, b = 1.0;
+					solution X_test(X.x + b * d);
+					X_test.fit_fun(ff4T);
+					while (X_test.y < X.y && b < 100.0)
+					{
+						a = b; b *= 2.0;
+						X_test.x = X.x + b * d;
+						X_test.fit_fun(ff4T);
+					}
+					double phi = (1.0 + sqrt(5.0)) / 2.0;
+					double c = b - (b - a) / phi;
+					double d_gold = a + (b - a) / phi;
+					solution X_c(X.x + c * d), X_d(X.x + d_gold * d);
+					X_c.fit_fun(ff4T); X_d.fit_fun(ff4T);
+					while (abs(b - a) > 1e-6 && solution::f_calls < Nmax)
+					{
+						if (X_c.y < X_d.y)
+						{
+							b = d_gold; d_gold = c; X_d = X_c;
+							c = b - (b - a) / phi;
+							X_c.x = X.x + c * d; X_c.fit_fun(ff4T);
+						}
+						else
+						{
+							a = c; c = d_gold; X_c = X_d;
+							d_gold = a + (b - a) / phi;
+							X_d.x = X.x + d_gold * d; X_d.fit_fun(ff4T);
+						}
+					}
+					h = (a + b) / 2.0;
+				}
+				
+				X.x = X.x + h * d;
+				X.fit_fun(ff4T);
+				X.grad(gf4T);
+				histories[3 + s_idx].push_back(X.x);
+				
+				// Sprawdzenie poprawności
+				bool has_invalid = false;
+				for (int i = 0; i < 2; i++)
+					if (isnan(X.x(i)) || isinf(X.x(i)))
+						has_invalid = true;
+				if (isnan(X.y(0)) || isinf(X.y(0)))
+					has_invalid = true;
+				
+				if (has_invalid)
+				{
+					d = -X.g;
+					g_prev = X.g;
+					if (solution::f_calls >= Nmax) break;
+					continue;
+				}
+				
+				double g_prev_norm_sq = (trans(g_prev) * g_prev)(0);
+				double beta = 0.0;
+				if (g_prev_norm_sq > 1e-12)
+					beta = (trans(X.g) * X.g)(0) / g_prev_norm_sq;
+				
+				if (beta > 100.0 || beta < 0.0 || isnan(beta) || isinf(beta))
+					beta = 0.0;
+				
+				d = -X.g + beta * d;
+				
+				// Sprawdzenie czy kierunek nie jest zbyt duży
+				double d_norm = norm(d);
+				if (d_norm > 1e10 || isnan(d_norm) || isinf(d_norm))
+				{
+					d = -X.g;
+					beta = 0.0;
+				}
+				
+				g_prev = X.g;
+				
+				if (solution::f_calls >= Nmax) break;
+			}
+		}
+		
+		// Newton
+		{
+			solution::clear_calls();
+			solution X(x0_plot);
+			X.fit_fun(ff4T);
+			X.grad(gf4T);
+			X.hess(Hf4T);
+			histories[6 + s_idx].push_back(X.x);
+			
+			while (norm(X.g) >= epsilon && solution::f_calls < Nmax)
+			{
+				matrix d;
+				try { d = -inv(X.H) * X.g; }
+				catch (...) { d = -X.g; }
+				
+				double h;
+				
+				if (step > 0)
+				{
+					h = step;
+				}
+				else
+				{
+					// Golden search
+					double a = 0.0, b = 1.0;
+					solution X_test(X.x + b * d);
+					X_test.fit_fun(ff4T);
+					while (X_test.y < X.y && b < 100.0)
+					{
+						a = b; b *= 2.0;
+						X_test.x = X.x + b * d;
+						X_test.fit_fun(ff4T);
+					}
+					double phi = (1.0 + sqrt(5.0)) / 2.0;
+					double c = b - (b - a) / phi;
+					double d_gold = a + (b - a) / phi;
+					solution X_c(X.x + c * d), X_d(X.x + d_gold * d);
+					X_c.fit_fun(ff4T); X_d.fit_fun(ff4T);
+					while (abs(b - a) > 1e-6 && solution::f_calls < Nmax)
+					{
+						if (X_c.y < X_d.y)
+						{
+							b = d_gold; d_gold = c; X_d = X_c;
+							c = b - (b - a) / phi;
+							X_c.x = X.x + c * d; X_c.fit_fun(ff4T);
+						}
+						else
+						{
+							a = c; c = d_gold; X_c = X_d;
+							d_gold = a + (b - a) / phi;
+							X_d.x = X.x + d_gold * d; X_d.fit_fun(ff4T);
+						}
+					}
+					h = (a + b) / 2.0;
+				}
+				
+				X.x = X.x + h * d;
+				X.fit_fun(ff4T);
+				X.grad(gf4T);
+				X.hess(Hf4T);
+				histories[6 + s_idx].push_back(X.x);
+				
+				if (solution::f_calls >= Nmax) break;
+			}
+		}
+		
+		if (s_idx == 0)
+			cout << "  s = 0.05: SD=" << histories[0].size() << ", CG=" << histories[3].size() << ", N=" << histories[6].size() << " iter\n";
+		else if (s_idx == 1)
+			cout << "  s = 0.25: SD=" << histories[1].size() << ", CG=" << histories[4].size() << ", N=" << histories[7].size() << " iter\n";
+		else
+			cout << "  zmiennokrokowy: SD=" << histories[2].size() << ", CG=" << histories[5].size() << ", N=" << histories[8].size() << " iter\n";
+	}
+	
+	// Znajdź maksymalną liczbę iteracji
+	size_t max_iters = 0;
+	for (int i = 0; i < 9; i++)
+		if (histories[i].size() > max_iters)
+			max_iters = histories[i].size();
+	
+	// Zapisz do CSV
+	for (size_t iter = 0; iter < max_iters; iter++)
+	{
+		for (int i = 0; i < 9; i++)
+		{
+			if (iter < histories[i].size())
+				csv_wykresy << histories[i][iter](0) << "," << histories[i][iter](1);
+			else
+				csv_wykresy << ",";
+			
+			if (i < 8)
+				csv_wykresy << ",";
+		}
+		csv_wykresy << "\n";
+	}
+	
+	csv_wykresy.close();
+	
+	cout << "\nŚcieżki optymalizacji zapisane do: ../data/lab4_wykresy.csv\n";
+	cout << "\n=== LAB 4 ZAKOŃCZONE ===\n";
 }
 
 void lab5()

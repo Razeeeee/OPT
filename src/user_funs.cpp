@@ -428,3 +428,42 @@ matrix ff3R(matrix x, matrix ud1, matrix ud2)
 	
 	return y;
 }
+
+matrix ff4T(matrix x, matrix ud1, matrix ud2)				// funkcja celu dla przypadku testowego Lab 4
+{
+	matrix y;
+	// f(x1, x2) = (1/6)*x1^6 - 1.05*x1^4 + 2*x1^2 + x2^2 + x1*x2
+	double x1 = x(0);
+	double x2 = x(1);
+	y = (1.0/6.0) * pow(x1, 6) - 1.05 * pow(x1, 4) + 2.0 * pow(x1, 2) + pow(x2, 2) + x1 * x2;
+	return y;
+}
+
+matrix gf4T(matrix x, matrix ud1, matrix ud2)				// gradient funkcji ff4T
+{
+	matrix g(2, 1);
+	double x1 = x(0);
+	double x2 = x(1);
+	// df/dx1 = x1^5 - 4.2*x1^3 + 4*x1 + x2
+	g(0) = pow(x1, 5) - 4.2 * pow(x1, 3) + 4.0 * x1 + x2;
+	// df/dx2 = 2*x2 + x1
+	g(1) = 2.0 * x2 + x1;
+	return g;
+}
+
+matrix Hf4T(matrix x, matrix ud1, matrix ud2)				// hesjan funkcji ff4T
+{
+	matrix H(2, 2);
+	double x1 = x(0);
+	double x2 = x(1);
+	// d²f/dx1² = 5*x1^4 - 12.6*x1^2 + 4
+	H(0, 0) = 5.0 * pow(x1, 4) - 12.6 * pow(x1, 2) + 4.0;
+	// d²f/dx1dx2 = 1
+	H(0, 1) = 1.0;
+	// d²f/dx2dx1 = 1
+	H(1, 0) = 1.0;
+	// d²f/dx2² = 2
+	H(1, 1) = 2.0;
+	return H;
+}
+

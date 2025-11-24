@@ -803,10 +803,90 @@ solution SD(matrix (*ff)(matrix, matrix, matrix), matrix (*gf)(matrix, matrix, m
 {
 	try
 	{
-		solution Xopt;
-		// Tu wpisz kod funkcji
-
-		return Xopt;
+		solution X(x0);
+		X.fit_fun(ff, ud1, ud2);
+		X.grad(gf, ud1, ud2);
+		
+		int n = get_len(x0);
+		
+		while (norm(X.g) >= epsilon && solution::f_calls < Nmax)
+		{
+			// Kierunek najszybszego spadku: minus gradient
+			matrix d = -X.g;
+			
+			double h;
+			if (h0 > 0)
+			{
+				// Wersja stałokrokowa
+				h = h0;
+			}
+			else
+			{
+				// Wersja zmiennokrokowa - używamy golden search
+				// Szukamy optymalnego h w przedziale [0, 1]
+				// Funkcja pomocnicza: f_h(h) = f(X + h*d)
+				double a = 0.0;
+				double b = 1.0;
+				double golden_eps = 1e-6;
+				
+				// Ekspansja - znajdź odpowiedni przedział
+				solution X_test(X.x + b * d);
+				X_test.fit_fun(ff, ud1, ud2);
+				
+				while (X_test.y < X.y && b < 100.0)
+				{
+					a = b;
+					b *= 2.0;
+					X_test.x = X.x + b * d;
+					X_test.fit_fun(ff, ud1, ud2);
+				}
+				
+				// Golden search w przedziale [a, b]
+				double phi = (1.0 + sqrt(5.0)) / 2.0;
+				double c = b - (b - a) / phi;
+				double d_gold = a + (b - a) / phi;
+				
+				solution X_c(X.x + c * d);
+				X_c.fit_fun(ff, ud1, ud2);
+				
+				solution X_d(X.x + d_gold * d);
+				X_d.fit_fun(ff, ud1, ud2);
+				
+				while (abs(b - a) > golden_eps && solution::f_calls < Nmax)
+				{
+					if (X_c.y < X_d.y)
+					{
+						b = d_gold;
+						d_gold = c;
+						X_d = X_c;
+						c = b - (b - a) / phi;
+						X_c.x = X.x + c * d;
+						X_c.fit_fun(ff, ud1, ud2);
+					}
+					else
+					{
+						a = c;
+						c = d_gold;
+						X_c = X_d;
+						d_gold = a + (b - a) / phi;
+						X_d.x = X.x + d_gold * d;
+						X_d.fit_fun(ff, ud1, ud2);
+					}
+				}
+				
+				h = (a + b) / 2.0;
+			}
+			
+			// Nowy punkt
+			X.x = X.x + h * d;
+			X.fit_fun(ff, ud1, ud2);
+			X.grad(gf, ud1, ud2);
+			
+			if (solution::f_calls >= Nmax)
+				break;
+		}
+		
+		return X;
 	}
 	catch (string ex_info)
 	{
@@ -818,10 +898,172 @@ solution CG(matrix (*ff)(matrix, matrix, matrix), matrix (*gf)(matrix, matrix, m
 {
 	try
 	{
-		solution Xopt;
-		// Tu wpisz kod funkcji
-
-		return Xopt;
+		solution X(x0);
+		X.fit_fun(ff, ud1, ud2);
+		X.grad(gf, ud1, ud2);
+		
+		// Początkowy kierunek = -gradient
+		matrix d = -X.g;
+		
+		int iteration = 0;
+		int n = get_len(x0);  // wymiar problemu
+		
+		while (norm(X.g) >= epsilon && solution::f_calls < Nmax)
+		{
+			// Zapamiętaj poprzedni gradient i punkt
+			matrix g_prev = X.g;
+			solution X_prev = X;
+			
+			// Normalizacja kierunku dla stabilności numerycznej
+			double d_norm = norm(d);
+			if (d_norm < 1e-14)
+			{
+				// Kierunek zerowy - restart z gradientem
+				d = -X.g;
+				d_norm = norm(d);
+			}
+			
+			// Wyznaczenie długości kroku
+			double h;
+			if (h0 > 0)
+			{
+				// Krok stały
+				h = h0;
+			}
+			else
+			{
+				// Krok zmienny - golden search z zabezpieczeniami
+				double a = 0.0;
+				double b = 0.01;  // mniejszy początkowy krok
+				double golden_eps = 1e-6;
+				
+				// Ekspansja - z ograniczeniem maksymalnego kroku
+				solution X_test(X.x + b * d);
+				X_test.fit_fun(ff, ud1, ud2);
+				
+				int expansion_iter = 0;
+				while (X_test.y < X.y && b < 10.0 && solution::f_calls < Nmax && expansion_iter < 20)
+				{
+					// Sprawdź czy wartości są skończone
+					if (!isfinite(X_test.y(0)))
+						break;
+					
+					a = b;
+					b *= 2.0;
+					X_test.x = X.x + b * d;
+					X_test.fit_fun(ff, ud1, ud2);
+					expansion_iter++;
+				}
+				
+				// Jeśli nie znaleziono lepszego punktu, użyj małego kroku
+				if (X_test.y >= X.y || !isfinite(X_test.y(0)))
+				{
+					b = a > 0 ? a : 0.001;
+				}
+				
+				// Golden search
+				double phi = (1.0 + sqrt(5.0)) / 2.0;
+				double c = b - (b - a) / phi;
+				double d_gold = a + (b - a) / phi;
+				
+				solution X_c(X.x + c * d);
+				X_c.fit_fun(ff, ud1, ud2);
+				
+				solution X_d(X.x + d_gold * d);
+				X_d.fit_fun(ff, ud1, ud2);
+				
+				int golden_iter = 0;
+				while (abs(b - a) > golden_eps && solution::f_calls < Nmax && golden_iter < 100)
+				{
+					if (X_c.y < X_d.y)
+					{
+						b = d_gold;
+						d_gold = c;
+						X_d = X_c;
+						c = b - (b - a) / phi;
+						X_c.x = X.x + c * d;
+						X_c.fit_fun(ff, ud1, ud2);
+					}
+					else
+					{
+						a = c;
+						c = d_gold;
+						X_c = X_d;
+						d_gold = a + (b - a) / phi;
+						X_d.x = X.x + d_gold * d;
+						X_d.fit_fun(ff, ud1, ud2);
+					}
+					golden_iter++;
+				}
+				
+				h = (a + b) / 2.0;
+				
+				// Ograniczenie maksymalnego kroku
+				if (h > 10.0 || !isfinite(h))
+					h = 0.01;
+			}
+			
+			// Nowy punkt
+			X.x = X.x + h * d;
+			X.fit_fun(ff, ud1, ud2);
+			
+			// Sprawdzenie czy wartości są skończone
+			if (!isfinite(X.y(0)) || !isfinite(X.x(0)) || (get_len(X.x) > 1 && !isfinite(X.x(1))))
+			{
+				// Jeśli dostaliśmy inf/nan, wróć do poprzedniego punktu i zakończ
+				X = X_prev;
+				break;
+			}
+			
+			X.grad(gf, ud1, ud2);
+			
+			// Sprawdzenie gradientu
+			if (!isfinite(X.g(0)) || (get_len(X.g) > 1 && !isfinite(X.g(1))))
+			{
+				X = X_prev;
+				break;
+			}
+			
+			// Współczynnik beta (wzór Fletchera-Reevesa)
+			double beta = 0.0;
+			double g_prev_norm_sq = (trans(g_prev) * g_prev)(0);
+			
+			if (g_prev_norm_sq > 1e-14)
+			{
+				double g_curr_norm_sq = (trans(X.g) * X.g)(0);
+				beta = g_curr_norm_sq / g_prev_norm_sq;
+				
+				// Ograniczenie beta dla stabilności
+				if (beta < 0 || beta > 10.0 || !isfinite(beta))
+					beta = 0.0;
+			}
+			
+			// Restart co n iteracji (Powell restart)
+			iteration++;
+			if (iteration % n == 0)
+			{
+				beta = 0.0;
+			}
+			
+			// Nowy kierunek sprzężony
+			d = -X.g + beta * d;
+			
+			// Sprawdzenie czy kierunek jest skończony
+			if (!isfinite(d(0)) || (get_len(d) > 1 && !isfinite(d(1))))
+			{
+				// Reset do kierunku gradientu
+				d = -X.g;
+			}
+			
+			// Jeśli kierunek nie jest kierunkiem spadku, restart
+			double descent_check = (trans(d) * X.g)(0);
+			if (descent_check >= 0)
+			{
+				d = -X.g;
+			}
+		}
+		
+		return X;
 	}
 	catch (string ex_info)
 	{
@@ -834,10 +1076,99 @@ solution Newton(matrix (*ff)(matrix, matrix, matrix), matrix (*gf)(matrix, matri
 {
 	try
 	{
-		solution Xopt;
-		// Tu wpisz kod funkcji
-
-		return Xopt;
+		solution X(x0);
+		X.fit_fun(ff, ud1, ud2);
+		X.grad(gf, ud1, ud2);
+		X.hess(Hf, ud1, ud2);
+		
+		int n = get_len(x0);
+		
+		while (norm(X.g) >= epsilon && solution::f_calls < Nmax)
+		{
+			// Kierunek Newtona: d = -H^(-1) * g
+			matrix d;
+			try
+			{
+				d = -inv(X.H) * X.g;
+			}
+			catch (...)
+			{
+				// Jeśli hesjan jest osobliwy, użyj kierunku gradientu
+				d = -X.g;
+			}
+			
+			double h;
+			if (h0 > 0)
+			{
+				// Wersja stałokrokowa
+				h = h0;
+			}
+			else
+			{
+				// Wersja zmiennokrokowa - golden search
+				double a = 0.0;
+				double b = 1.0;
+				double golden_eps = 1e-6;
+				
+				// Ekspansja
+				solution X_test(X.x + b * d);
+				X_test.fit_fun(ff, ud1, ud2);
+				
+				while (X_test.y < X.y && b < 100.0)
+				{
+					a = b;
+					b *= 2.0;
+					X_test.x = X.x + b * d;
+					X_test.fit_fun(ff, ud1, ud2);
+				}
+				
+				// Golden search
+				double phi = (1.0 + sqrt(5.0)) / 2.0;
+				double c = b - (b - a) / phi;
+				double d_gold = a + (b - a) / phi;
+				
+				solution X_c(X.x + c * d);
+				X_c.fit_fun(ff, ud1, ud2);
+				
+				solution X_d(X.x + d_gold * d);
+				X_d.fit_fun(ff, ud1, ud2);
+				
+				while (abs(b - a) > golden_eps && solution::f_calls < Nmax)
+				{
+					if (X_c.y < X_d.y)
+					{
+						b = d_gold;
+						d_gold = c;
+						X_d = X_c;
+						c = b - (b - a) / phi;
+						X_c.x = X.x + c * d;
+						X_c.fit_fun(ff, ud1, ud2);
+					}
+					else
+					{
+						a = c;
+						c = d_gold;
+						X_c = X_d;
+						d_gold = a + (b - a) / phi;
+						X_d.x = X.x + d_gold * d;
+						X_d.fit_fun(ff, ud1, ud2);
+					}
+				}
+				
+				h = (a + b) / 2.0;
+			}
+			
+			// Nowy punkt
+			X.x = X.x + h * d;
+			X.fit_fun(ff, ud1, ud2);
+			X.grad(gf, ud1, ud2);
+			X.hess(Hf, ud1, ud2);
+			
+			if (solution::f_calls >= Nmax)
+				break;
+		}
+		
+		return X;
 	}
 	catch (string ex_info)
 	{
