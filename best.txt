@@ -1,0 +1,6 @@
+Krok s = 1:
+  Zbieżność: f_calls=948, g_calls=948, norm(grad)=0.000998004
+  theta* = [-6.49597, 7.6393, 9.4115]
+  J(theta*) = 0.27167
+  P(theta*) = 84%
+  g_calls = 948

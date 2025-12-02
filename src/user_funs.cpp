@@ -467,3 +467,83 @@ matrix Hf4T(matrix x, matrix ud1, matrix ud2)				// hesjan funkcji ff4T
 	return H;
 }
 
+// ===================== LAB 4 - KLASYFIKATOR LOGISTYCZNY =====================
+
+// Funkcja sigmoidalna - hipoteza h_theta(x) = 1/(1+e^(-theta^T*x))
+double sigmoid(double z) {
+	return 1.0 / (1.0 + exp(-z));
+}
+
+// Funkcja hipotezy dla klasyfikatora logistycznego
+// theta - wektor parametrów [theta0, theta1, theta2]
+// x - wektor cech [1, x1, x2]
+double h_theta(matrix theta, matrix x) {
+	double z = 0.0;
+	int n = get_len(theta);
+	for (int i = 0; i < n; i++) {
+		z += theta(i) * x(i);
+	}
+	return sigmoid(z);
+}
+
+// Funkcja kosztu J(theta) dla klasyfikatora logistycznego
+// theta - wektor parametrów [theta0, theta1, theta2]
+// ud1 - macierz X (dane wejściowe), każda kolumna to [1, x1^i, x2^i]
+// ud2 - wektor Y (etykiety), y^i ∈ {0, 1}
+matrix ff4R(matrix theta, matrix ud1, matrix ud2) {
+	matrix y;
+	int m = get_len(ud2);  // liczba przykładów uczących
+	double J = 0.0;
+	
+	for (int i = 0; i < m; i++) {
+		// Pobierz i-ty wektor cech (kolumna macierzy X)
+		matrix x_i(3, 1);
+		x_i(0) = ud1(0, i);  // 1
+		x_i(1) = ud1(1, i);  // x1^i
+		x_i(2) = ud1(2, i);  // x2^i
+		
+		double h = h_theta(theta, x_i);
+		double y_i = ud2(i);
+		
+		// J(theta) = -1/m * sum(y^i * ln(h_theta(x^i)) + (1-y^i) * ln(1-h_theta(x^i)))
+		if (h > 0 && h < 1) {  // unikamy log(0)
+			J += y_i * log(h) + (1.0 - y_i) * log(1.0 - h);
+		}
+	}
+	
+	y = -J / m;
+	return y;
+}
+
+// Gradient funkcji kosztu
+// dJ(theta)/dtheta_j = 1/m * sum((h_theta(x^i) - y^i) * x_j^i)
+matrix gf4R(matrix theta, matrix ud1, matrix ud2) {
+	int m = get_len(ud2);  // liczba przykładów uczących
+	int n = get_len(theta);  // liczba parametrów (3)
+	matrix grad(n, 1);
+	
+	for (int i = 0; i < m; i++) {
+		// Pobierz i-ty wektor cech
+		matrix x_i(3, 1);
+		x_i(0) = ud1(0, i);  // 1
+		x_i(1) = ud1(1, i);  // x1^i
+		x_i(2) = ud1(2, i);  // x2^i
+		
+		double h = h_theta(theta, x_i);
+		double y_i = ud2(i);
+		double diff = h - y_i;
+		
+		// Akumuluj gradient dla każdego parametru
+		for (int j = 0; j < n; j++) {
+			grad(j) = grad(j) + diff * x_i(j);
+		}
+	}
+	
+	// Podziel przez m
+	for (int j = 0; j < n; j++) {
+		grad(j) = grad(j) / m;
+	}
+	
+	return grad;
+}
+

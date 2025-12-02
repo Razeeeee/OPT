@@ -8,11 +8,15 @@ Akademia Górniczo-Hutnicza
 Data ostatniej modyfikacji: 30.09.2025
 *********************************************/
 
+#define _USE_MATH_DEFINES
+#include<cmath>
 #include"opt_alg.h"
 #include<vector>
 #include<algorithm>
 #include<ctime>
 #include<cstdlib>
+#include<sstream>
+#include<fstream>
 
 void lab0();
 void lab1();
@@ -1688,6 +1692,235 @@ void lab4()
 	
 	cout << "\nŚcieżki optymalizacji zapisane do: ../data/lab4_wykresy.csv\n";
 	cout << "\n=== LAB 4 ZAKOŃCZONE ===\n";
+	
+	// ===================== PROBLEM RZECZYWISTY - KLASYFIKATOR LOGISTYCZNY =====================
+	cout << "\n\n=== LAB 4: Problem rzeczywisty - Klasyfikator logistyczny ===\n\n";
+	
+	// Wczytanie danych uczących z plików
+	matrix X_data, Y_data;
+	
+	try {
+		// Wczytanie danych X (3 x 100)
+		ifstream x_file("src/XData.txt");
+		if (!x_file.is_open()) {
+			cerr << "BŁĄD: Nie można otworzyć pliku src/XData.txt\n";
+			return;
+		}
+		
+		vector<vector<double>> x_temp;
+		string line;
+		while (getline(x_file, line)) {
+			vector<double> row;
+			stringstream ss(line);
+			double val;
+			char sep;
+			while (ss >> val) {
+				row.push_back(val);
+				ss >> sep; // odczytaj separator (;)
+			}
+			if (!row.empty())
+				x_temp.push_back(row);
+		}
+		x_file.close();
+		
+		// Konwersja do macierzy (3 wiersze, 100 kolumn)
+		int rows = x_temp.size();
+		int cols = x_temp[0].size();
+		X_data = matrix(rows, cols);
+		for (int i = 0; i < rows; i++)
+			for (int j = 0; j < cols; j++)
+				X_data(i, j) = x_temp[i][j];
+		
+		// Wczytanie danych Y (100 x 1)
+		ifstream y_file("src/YData.txt");
+		if (!y_file.is_open()) {
+			cerr << "BŁĄD: Nie można otworzyć pliku src/YData.txt\n";
+			return;
+		}
+		
+		vector<double> y_temp;
+		getline(y_file, line);
+		stringstream ss(line);
+		double val;
+		char sep;
+		while (ss >> val) {
+			y_temp.push_back(val);
+			ss >> sep; // odczytaj separator (;)
+		}
+		y_file.close();
+		
+		Y_data = matrix(y_temp.size(), 1);
+		for (size_t i = 0; i < y_temp.size(); i++)
+			Y_data(i) = y_temp[i];
+		
+		cout << "Wczytano dane uczące:\n";
+		int* X_size = get_size(X_data);
+		int* Y_size = get_size(Y_data);
+		cout << "  X: " << X_size[0] << " x " << X_size[1] << "\n";
+		cout << "  Y: " << Y_size[0] << " x " << Y_size[1] << "\n\n";
+		
+	}
+	catch (exception& e) {
+		cerr << "BŁĄD podczas wczytywania danych: " << e.what() << "\n";
+		return;
+	}
+	
+	// NORMALIZACJA DANYCH (feature scaling)
+	// X_data(1,:) to x1 (ocena z przedmiotu 1)
+	// X_data(2,:) to x2 (ocena z przedmiotu 2)
+	cout << "=== NORMALIZACJA DANYCH ===\n";
+	
+	int* X_size = get_size(X_data);
+	int m = X_size[1];  // liczba przykładów
+	
+	// Znajdź min i max dla x1 i x2
+	double x1_min = X_data(1, 0), x1_max = X_data(1, 0);
+	double x2_min = X_data(2, 0), x2_max = X_data(2, 0);
+	
+	for (int i = 0; i < m; i++) {
+		if (X_data(1, i) < x1_min) x1_min = X_data(1, i);
+		if (X_data(1, i) > x1_max) x1_max = X_data(1, i);
+		if (X_data(2, i) < x2_min) x2_min = X_data(2, i);
+		if (X_data(2, i) > x2_max) x2_max = X_data(2, i);
+	}
+	
+	cout << "  x1: [" << x1_min << ", " << x1_max << "]\n";
+	cout << "  x2: [" << x2_min << ", " << x2_max << "]\n";
+	
+	// Normalizacja do zakresu [0, 1]
+	matrix X_normalized = X_data;
+	for (int i = 0; i < m; i++) {
+		X_normalized(1, i) = (X_data(1, i) - x1_min) / (x1_max - x1_min);
+		X_normalized(2, i) = (X_data(2, i) - x2_min) / (x2_max - x2_min);
+	}
+	
+	cout << "  Dane znormalizowane do [0, 1]\n\n";
+	
+	// Testowanie dla theta = [0.1, 0.1, 0.1]
+	cout << "=== TESTOWANIE FUNKCJI KOSZTU I GRADIENTU ===\n";
+	matrix theta_test(3, 1);
+	theta_test(0) = 0.1;
+	theta_test(1) = 0.1;
+	theta_test(2) = 0.1;
+	
+	solution::clear_calls();
+	matrix J_test = ff4R(theta_test, X_normalized, Y_data);
+	matrix grad_test = gf4R(theta_test, X_normalized, Y_data);
+	
+	cout << "Dla theta = [0.1, 0.1, 0.1] (dane znormalizowane):\n";
+	cout << "  J(theta) = " << J_test(0) << "\n";
+	cout << "  grad J(theta) = [" << grad_test(0) << ", " << grad_test(1) << ", " << grad_test(2) << "]\n\n";
+	
+	// Optymalizacja metodą gradientów sprzężonych
+	cout << "=== OPTYMALIZACJA METODĄ GRADIENTÓW SPRZĘŻONYCH ===\n\n";
+	
+	// Punkt startowy
+	matrix theta0(3, 1);
+	theta0(0) = 0.0;
+	theta0(1) = 0.0;
+	theta0(2) = 0.0;
+	
+	double epsilon_log = 1e-3;
+	int Nmax_log = 10000;
+	
+	// Długości kroku - dostosowane dla znormalizowanych danych [0,1]
+	double step_sizes_log[3] = { 0.05, 0.1, 0.5 };
+	
+	// Plik CSV dla wyników
+	ofstream csv_klasyfikator("data/lab4_klasyfikator.csv");
+	csv_klasyfikator << "krok,theta0,theta1,theta2,J(theta),P(theta),g_calls\n";
+	
+	// Przechowuj najlepszy wynik dla wykresu
+	double best_accuracy = 0.0;
+	matrix best_theta;
+	double best_step = 0.0;
+	
+	for (int s_idx = 0; s_idx < 3; s_idx++)
+	{
+		double step_size = step_sizes_log[s_idx];
+		
+		cout << "Krok s = " << step_size << ":\n";
+		
+		solution::clear_calls();
+		solution opt = CG(ff4R, gf4R, theta0, step_size, epsilon_log, Nmax_log, X_normalized, Y_data);
+		
+		int f_calls = solution::f_calls;
+		int g_calls = solution::g_calls;
+		
+		cout << "  Zbieżność: f_calls=" << f_calls << ", g_calls=" << g_calls << ", norm(grad)=" << norm(opt.g) << "\n";
+		
+		// Obliczenie dokładności klasyfikacji P(theta*)
+		int correct = 0;
+		int m = get_len(Y_data);
+		for (int i = 0; i < m; i++)
+		{
+			matrix x_i(3, 1);
+			x_i(0) = X_normalized(0, i);
+			x_i(1) = X_normalized(1, i);
+			x_i(2) = X_normalized(2, i);
+			
+			double h = h_theta(opt.x, x_i);
+			int predicted = (h >= 0.5) ? 1 : 0;
+			int actual = (int)Y_data(i);
+			
+			if (predicted == actual)
+				correct++;
+		}
+		
+		double accuracy = (correct / (double)m) * 100.0;
+		
+		cout << "  theta* = [" << opt.x(0) << ", " << opt.x(1) << ", " << opt.x(2) << "]\n";
+		cout << "  J(theta*) = " << opt.y(0) << "\n";
+		cout << "  P(theta*) = " << accuracy << "%\n";
+		cout << "  g_calls = " << g_calls << "\n\n";
+		
+		// Zapis do CSV
+		csv_klasyfikator << step_size << "," 
+						<< opt.x(0) << "," << opt.x(1) << "," << opt.x(2) << ","
+						<< opt.y(0) << "," << accuracy << "," << g_calls << "\n";
+		
+		// Sprawdź czy to najlepszy wynik
+		if (accuracy > best_accuracy)
+		{
+			best_accuracy = accuracy;
+			best_theta = opt.x;
+			best_step = step_size;
+		}
+	}
+	
+	csv_klasyfikator.close();
+	
+	cout << "Wyniki zapisane do: data/lab4_klasyfikator.csv\n";
+	cout << "Najlepsza dokładność: " << best_accuracy << "% (krok = " << best_step << ")\n";
+	cout << "Parametry najlepszego klasyfikatora (znormalizowane): theta = [" << best_theta(0) << ", " << best_theta(1) << ", " << best_theta(2) << "]\n";
+	
+	// Konwersja theta do oryginalnej skali
+	// Dla znormalizowanych danych: x_norm = (x - min) / (max - min)
+	// Granica: theta0 + theta1*x1_norm + theta2*x2_norm = 0
+	// Podstawiając: theta0 + theta1*(x1-x1_min)/(x1_max-x1_min) + theta2*(x2-x2_min)/(x2_max-x2_min) = 0
+	// Przekształcając: theta0_orig + theta1_orig*x1 + theta2_orig*x2 = 0
+	double theta0_orig = best_theta(0) - best_theta(1)*x1_min/(x1_max-x1_min) - best_theta(2)*x2_min/(x2_max-x2_min);
+	double theta1_orig = best_theta(1) / (x1_max - x1_min);
+	double theta2_orig = best_theta(2) / (x2_max - x2_min);
+	
+	cout << "Parametry dla oryginalnych danych: theta = [" << theta0_orig << ", " << theta1_orig << ", " << theta2_orig << "]\n\n";
+	
+	// Zapisz dane dla wykresu
+	ofstream csv_wykres("data/lab4_classification_data.csv");
+	csv_wykres << "x1,x2,y,best_theta0,best_theta1,best_theta2\n";
+	
+	int m_total = get_len(Y_data);
+	for (int i = 0; i < m_total; i++)
+	{
+		csv_wykres << X_data(1, i) << "," << X_data(2, i) << "," << Y_data(i);
+		if (i == 0)
+			csv_wykres << "," << theta0_orig << "," << theta1_orig << "," << theta2_orig;
+		csv_wykres << "\n";
+	}
+	csv_wykres.close();
+	
+	cout << "Dane do wykresu zapisane do: data/lab4_classification_data.csv\n";
+	cout << "\n=== LAB 4 PROBLEM RZECZYWISTY ZAKOŃCZONY ===\n";
 }
 
 void lab5()

@@ -22,3 +22,9 @@ matrix ff4T(matrix, matrix = NAN, matrix = NAN);
 matrix gf4T(matrix, matrix = NAN, matrix = NAN);
 matrix Hf4T(matrix, matrix = NAN, matrix = NAN);
 
+// Lab 4 - Klasyfikator logistyczny
+double sigmoid(double);
+double h_theta(matrix, matrix);
+matrix ff4R(matrix, matrix = NAN, matrix = NAN);
+matrix gf4R(matrix, matrix = NAN, matrix = NAN);
+
