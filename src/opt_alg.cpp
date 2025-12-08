@@ -1180,9 +1180,48 @@ solution golden(matrix (*ff)(matrix, matrix, matrix), double a, double b, double
 {
 	try
 	{
+		const double phi = (1.0 + sqrt(5.0)) / 2.0; // golden ratio
+		const double resphi = 2.0 - phi; // 1/phi
+		
+		solution A(a), B(b);
+		double tol = epsilon;
+		
+		// Initial points
+		solution C(B.x(0) - resphi * (B.x(0) - A.x(0)));
+		solution D(A.x(0) + resphi * (B.x(0) - A.x(0)));
+		
+		C.fit_fun(ff, ud1, ud2);
+		D.fit_fun(ff, ud1, ud2);
+		
+		while (abs(B.x(0) - A.x(0)) > tol && solution::f_calls < Nmax)
+		{
+			if (C.y < D.y)
+			{
+				B = D;
+				D = C;
+				C.x = B.x(0) - resphi * (B.x(0) - A.x(0));
+				C.fit_fun(ff, ud1, ud2);
+			}
+			else
+			{
+				A = C;
+				C = D;
+				D.x = A.x(0) + resphi * (B.x(0) - A.x(0));
+				D.fit_fun(ff, ud1, ud2);
+			}
+		}
+		
 		solution Xopt;
-		// Tu wpisz kod funkcji
-
+		if (C.y < D.y)
+		{
+			Xopt = C;
+		}
+		else
+		{
+			Xopt = D;
+		}
+		Xopt.flag = 1;
+		
 		return Xopt;
 	}
 	catch (string ex_info)
@@ -1195,10 +1234,348 @@ solution Powell(matrix (*ff)(matrix, matrix, matrix), matrix x0, double epsilon,
 {
 	try
 	{
-		solution Xopt;
-		// Tu wpisz kod funkcji
-
-		return Xopt;
+		int n = get_len(x0); // number of variables
+		solution p0(x0);
+		p0.fit_fun(ff, ud1, ud2);
+		
+		// Initialize directions as unit vectors (e_j)
+		matrix* d = new matrix[n];
+		for (int j = 0; j < n; ++j)
+		{
+			d[j] = matrix(n, 1);
+			d[j](j) = 1.0;
+		}
+		
+		int i = 0;
+		solution p_current = p0;
+		
+		while (solution::f_calls < Nmax)
+		{
+			solution p_prev = p_current; // p0(i) = x(i)
+			
+			// For j = 1 to n do
+			for (int j = 0; j < n; ++j)
+			{
+				// Find h_j(i) - line search along direction d_j(i)
+				// We need to minimize f(p_current + h*d[j]) with respect to h
+				
+				// Wrapper function for line search - we'll use expansion and golden directly
+				// First, expansion to find bracket
+				double h_start = 0.0;
+				double h_step = 0.1;
+				double alpha_exp = 1.5;
+				
+				// Manual expansion along direction
+				solution h0(h_start);
+				matrix x_h0 = p_current.x + h0.x(0) * d[j];
+				h0.y = ff(x_h0, ud1, ud2);
+				
+				solution h1(h_start + h_step);
+				matrix x_h1 = p_current.x + h1.x(0) * d[j];
+				h1.y = ff(x_h1, ud1, ud2);
+				
+				double a_bound, b_bound;
+				
+				if (h1.y == h0.y)
+				{
+					a_bound = h0.x(0);
+					b_bound = h1.x(0);
+				}
+				else if (h1.y > h0.y)
+				{
+					h_step = -h_step;
+					h1.x = h_start + h_step;
+					x_h1 = p_current.x + h1.x(0) * d[j];
+					h1.y = ff(x_h1, ud1, ud2);
+					
+					if (h1.y >= h0.y)
+					{
+						a_bound = h1.x(0);
+						b_bound = h0.x(0) - h_step;
+					}
+					else
+					{
+						// Continue expansion
+						int exp_i = 1;
+						solution h_curr = h1;
+						solution h_next;
+						
+						while (solution::f_calls < Nmax)
+						{
+							exp_i++;
+							h_next.x = h_start + pow(alpha_exp, exp_i) * h_step;
+							matrix x_hn = p_current.x + h_next.x(0) * d[j];
+							h_next.y = ff(x_hn, ud1, ud2);
+							
+							if (h_curr.y <= h_next.y)
+								break;
+							
+							h_curr = h_next;
+						}
+						
+						double h_previous = (exp_i == 2) ? h_start : h_start + pow(alpha_exp, exp_i - 1) * h_step;
+						
+						if (h_step > 0)
+						{
+							a_bound = h_previous;
+							b_bound = h_next.x(0);
+						}
+						else
+						{
+							a_bound = h_next.x(0);
+							b_bound = h_previous;
+						}
+					}
+				}
+				else
+				{
+					// Continue expansion in positive direction
+					int exp_i = 1;
+					solution h_curr = h1;
+					solution h_next;
+					
+					while (solution::f_calls < Nmax)
+					{
+						exp_i++;
+						h_next.x = h_start + pow(alpha_exp, exp_i) * h_step;
+						matrix x_hn = p_current.x + h_next.x(0) * d[j];
+						h_next.y = ff(x_hn, ud1, ud2);
+						
+						if (h_curr.y <= h_next.y)
+							break;
+						
+						h_curr = h_next;
+					}
+					
+					double h_previous = (exp_i == 2) ? h_start : h_start + pow(alpha_exp, exp_i - 1) * h_step;
+					
+					if (h_step > 0)
+					{
+						a_bound = h_previous;
+						b_bound = h_next.x(0);
+					}
+					else
+					{
+						a_bound = h_next.x(0);
+						b_bound = h_previous;
+					}
+				}
+				
+				// Golden section search in [a_bound, b_bound]
+				const double phi = (1.0 + sqrt(5.0)) / 2.0;
+				const double resphi = 2.0 - phi;
+				
+				double a_gold = a_bound;
+				double b_gold = b_bound;
+				double c_gold = b_gold - resphi * (b_gold - a_gold);
+				double d_gold = a_gold + resphi * (b_gold - a_gold);
+				
+				matrix x_c = p_current.x + c_gold * d[j];
+				double fc = m2d(ff(x_c, ud1, ud2));
+				matrix x_d = p_current.x + d_gold * d[j];
+				double fd = m2d(ff(x_d, ud1, ud2));
+				
+				while (abs(b_gold - a_gold) > epsilon && solution::f_calls < Nmax)
+				{
+					if (fc < fd)
+					{
+						b_gold = d_gold;
+						d_gold = c_gold;
+						fd = fc;
+						c_gold = b_gold - resphi * (b_gold - a_gold);
+						x_c = p_current.x + c_gold * d[j];
+						fc = m2d(ff(x_c, ud1, ud2));
+					}
+					else
+					{
+						a_gold = c_gold;
+						c_gold = d_gold;
+						fc = fd;
+						d_gold = a_gold + resphi * (b_gold - a_gold);
+						x_d = p_current.x + d_gold * d[j];
+						fd = m2d(ff(x_d, ud1, ud2));
+					}
+				}
+				
+				double h_opt = (fc < fd) ? c_gold : d_gold;
+				
+				// p_j(i) = p_{j-1}(i) + h_j(i) * d_j(i)
+				p_current.x = p_current.x + h_opt * d[j];
+				p_current.fit_fun(ff, ud1, ud2);
+			}
+			
+			// Check stopping criterion: ||p_n(i) - x(i)||_2 < epsilon
+			matrix diff = p_current.x - p_prev.x;
+			double norm = 0.0;
+			for (int k = 0; k < n; ++k)
+				norm += diff(k) * diff(k);
+			norm = sqrt(norm);
+			
+			if (norm < epsilon)
+			{
+				p_current.flag = 1;
+				delete[] d;
+				return p_current;
+			}
+			
+			// Update directions: d_j(i+1) = d_{j+1}(i) for j = 1 to n-1
+			for (int j = 0; j < n - 1; ++j)
+			{
+				d[j] = d[j + 1];
+			}
+			
+			// d_n(i+1) = p_n(i) - p_0(i)
+			d[n - 1] = p_current.x - p_prev.x;
+			
+			// Find h_{n+1}(i) - line search along new direction
+			// Expansion
+			double h_start = 0.0;
+			double h_step = 0.1;
+			double alpha_exp = 1.5;
+			
+			solution h0(h_start);
+			matrix x_h0 = p_current.x + h0.x(0) * d[n - 1];
+			h0.y = ff(x_h0, ud1, ud2);
+			
+			solution h1(h_start + h_step);
+			matrix x_h1 = p_current.x + h1.x(0) * d[n - 1];
+			h1.y = ff(x_h1, ud1, ud2);
+			
+			double a_bound, b_bound;
+			
+			if (h1.y == h0.y)
+			{
+				a_bound = h0.x(0);
+				b_bound = h1.x(0);
+			}
+			else if (h1.y > h0.y)
+			{
+				h_step = -h_step;
+				h1.x = h_start + h_step;
+				x_h1 = p_current.x + h1.x(0) * d[n - 1];
+				h1.y = ff(x_h1, ud1, ud2);
+				
+				if (h1.y >= h0.y)
+				{
+					a_bound = h1.x(0);
+					b_bound = h0.x(0) - h_step;
+				}
+				else
+				{
+					int exp_i = 1;
+					solution h_curr = h1;
+					solution h_next;
+					
+					while (solution::f_calls < Nmax)
+					{
+						exp_i++;
+						h_next.x = h_start + pow(alpha_exp, exp_i) * h_step;
+						matrix x_hn = p_current.x + h_next.x(0) * d[n - 1];
+						h_next.y = ff(x_hn, ud1, ud2);
+						
+						if (h_curr.y <= h_next.y)
+							break;
+						
+						h_curr = h_next;
+					}
+					
+					double h_previous = (exp_i == 2) ? h_start : h_start + pow(alpha_exp, exp_i - 1) * h_step;
+					
+					if (h_step > 0)
+					{
+						a_bound = h_previous;
+						b_bound = h_next.x(0);
+					}
+					else
+					{
+						a_bound = h_next.x(0);
+						b_bound = h_previous;
+					}
+				}
+			}
+			else
+			{
+				int exp_i = 1;
+				solution h_curr = h1;
+				solution h_next;
+				
+				while (solution::f_calls < Nmax)
+				{
+					exp_i++;
+					h_next.x = h_start + pow(alpha_exp, exp_i) * h_step;
+					matrix x_hn = p_current.x + h_next.x(0) * d[n - 1];
+					h_next.y = ff(x_hn, ud1, ud2);
+					
+					if (h_curr.y <= h_next.y)
+						break;
+					
+					h_curr = h_next;
+				}
+				
+				double h_previous = (exp_i == 2) ? h_start : h_start + pow(alpha_exp, exp_i - 1) * h_step;
+				
+				if (h_step > 0)
+				{
+					a_bound = h_previous;
+					b_bound = h_next.x(0);
+				}
+				else
+				{
+					a_bound = h_next.x(0);
+					b_bound = h_previous;
+				}
+			}
+			
+			// Golden section
+			const double phi = (1.0 + sqrt(5.0)) / 2.0;
+			const double resphi = 2.0 - phi;
+			
+			double a_gold = a_bound;
+			double b_gold = b_bound;
+			double c_gold = b_gold - resphi * (b_gold - a_gold);
+			double d_gold = a_gold + resphi * (b_gold - a_gold);
+			
+			matrix x_c = p_current.x + c_gold * d[n - 1];
+			double fc = m2d(ff(x_c, ud1, ud2));
+			matrix x_d = p_current.x + d_gold * d[n - 1];
+			double fd = m2d(ff(x_d, ud1, ud2));
+			
+			while (abs(b_gold - a_gold) > epsilon && solution::f_calls < Nmax)
+			{
+				if (fc < fd)
+				{
+					b_gold = d_gold;
+					d_gold = c_gold;
+					fd = fc;
+					c_gold = b_gold - resphi * (b_gold - a_gold);
+					x_c = p_current.x + c_gold * d[n - 1];
+					fc = m2d(ff(x_c, ud1, ud2));
+				}
+				else
+				{
+					a_gold = c_gold;
+					c_gold = d_gold;
+					fc = fd;
+					d_gold = a_gold + resphi * (b_gold - a_gold);
+					x_d = p_current.x + d_gold * d[n - 1];
+					fd = m2d(ff(x_d, ud1, ud2));
+				}
+			}
+			
+			double h_new = (fc < fd) ? c_gold : d_gold;
+			
+			// p_{n+1}(i) = p_n(i) + h_{n+1}(i) * d_n(i+1)
+			p_current.x = p_current.x + h_new * d[n - 1];
+			p_current.fit_fun(ff, ud1, ud2);
+			
+			// x(i+1) = p_{n+1}(i)
+			i = i + 1;
+		}
+		
+		// Max iterations reached
+		p_current.flag = 0;
+		delete[] d;
+		return p_current;
 	}
 	catch (string ex_info)
 	{

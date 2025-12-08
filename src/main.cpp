@@ -30,7 +30,7 @@ int main()
 {
 	try
 	{
-		lab4();
+		lab5();
 	}
 	catch (string EX_INFO)
 	{
@@ -1925,7 +1925,66 @@ void lab4()
 
 void lab5()
 {
-
+	/*
+	https://docs.google.com/spreadsheets/d/11q6EJaGLYeOlCW4MG8V6ITh-_AJPyye2/edit?usp=sharing&ouid=117458587915467310851&rtpof=true&sd=true
+	*/
+	srand(time(NULL));
+	
+	ofstream csv_file("lab5_results.csv");
+	
+	double a_values[3] = {1.0, 10.0, 100.0};
+	double epsilon = 1e-3;
+	int Nmax = 10000;
+	
+	// For w = 0, 0.01, 0.02, ..., 1.0 (101 values)
+	for (int w_idx = 0; w_idx <= 100; w_idx++)
+	{
+		double w = w_idx * 0.01;
+		
+		// Generate random starting point for each w
+		double x1_0 = -10.0 + (rand() / (double)RAND_MAX) * 20.0;  // [-10, 10]
+		double x2_0 = -10.0 + (rand() / (double)RAND_MAX) * 20.0;  // [-10, 10]
+		
+		// Write starting point
+		csv_file << x1_0 << "," << x2_0;
+		
+		// For each value of a
+		for (int a_idx = 0; a_idx < 3; a_idx++)
+		{
+			double a = a_values[a_idx];
+			
+			// Starting point
+			matrix x0(2, 1);
+			x0(0) = x1_0;
+			x0(1) = x2_0;
+			
+			// Parameters: a and w
+			matrix ud1(2, 1);
+			ud1(0) = a;
+			ud1(1) = w;
+			
+			solution::clear_calls();
+			
+			// Run Powell optimization
+			solution opt = Powell(ff5T, x0, epsilon, Nmax, ud1);
+			
+			double x1_star = opt.x(0);
+			double x2_star = opt.x(1);
+			
+			// Calculate f1 and f2 at optimal point
+			double f1_star = a * (pow(x1_star - 3.0, 2) + pow(x2_star - 3.0, 2));
+			double f2_star = (1.0 / a) * (pow(x1_star + 3.0, 2) + pow(x2_star + 3.0, 2));
+			int f_calls = solution::f_calls;
+			
+			// Write results: x1*, x2*, f1*, f2*, f_calls
+			csv_file << "," << x1_star << "," << x2_star << "," << f1_star << "," << f2_star << "," << f_calls;
+		}
+		
+		csv_file << "\n";
+	}
+	
+	csv_file.close();
+	cout << "Results saved to lab5_results.csv\n";
 }
 
 void lab6()

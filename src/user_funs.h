@@ -28,3 +28,6 @@ double h_theta(matrix, matrix);
 matrix ff4R(matrix, matrix = NAN, matrix = NAN);
 matrix gf4R(matrix, matrix = NAN, matrix = NAN);
 
+// Lab 5 - Optymalizacja wielokryterialna
+matrix ff5T(matrix, matrix = NAN, matrix = NAN);
+

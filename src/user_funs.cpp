@@ -547,3 +547,25 @@ matrix gf4R(matrix theta, matrix ud1, matrix ud2) {
 	return grad;
 }
 
+// Lab 5 - Optymalizacja wielokryterialna
+// ud1(0) = a (parametr)
+// ud1(1) = w (waga)
+// f(x) = w*f1(x) + (1-w)*f2(x)
+// f1(x1,x2) = a*((x1-3)^2 + (x2-3)^2)
+// f2(x1,x2) = (1/a)*((x1+3)^2 + (x2+3)^2)
+matrix ff5T(matrix x, matrix ud1, matrix ud2) {
+	double a = ud1(0);
+	double w = ud1(1);
+	
+	double x1 = x(0);
+	double x2 = x(1);
+	
+	double f1 = a * (pow(x1 - 3.0, 2) + pow(x2 - 3.0, 2));
+	double f2 = (1.0 / a) * (pow(x1 + 3.0, 2) + pow(x2 + 3.0, 2));
+	
+	matrix y;
+	y = w * f1 + (1.0 - w) * f2;
+	
+	return y;
+}
+
