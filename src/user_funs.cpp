@@ -569,3 +569,128 @@ matrix ff5T(matrix x, matrix ud1, matrix ud2) {
 	return y;
 }
 
+// Lab 5 - Problem rzeczywisty: optymalizacja belki
+// x(0) = l [m] - długość belki (0.2 <= l <= 1.0 m)
+// x(1) = d [m] - średnica przekroju (0.01 <= d <= 0.05 m)
+// ud1(0) = w - waga (0 <= w <= 1)
+// Parametry:
+// P = 2000 N (2 kN)
+// E = 120e9 Pa (120 GPa)
+// rho = 8920 kg/m^3
+// u_max = 0.0025 m (2.5 mm)
+// sigma_max = 300e6 Pa (300 MPa)
+matrix ff5R(matrix x, matrix ud1, matrix ud2) {
+	double l = x(0);  // długość belki [m]
+	double d = x(1);  // średnica belki [m]
+	double w = ud1(0);  // waga
+	
+	// Stałe
+	const double P = 2000.0;           // siła [N]
+	const double E = 120e9;            // moduł Younga [Pa]
+	const double rho = 8920.0;         // gęstość [kg/m^3]
+	const double u_max = 0.0025;       // max ugięcie [m] = 2.5 mm
+	const double sigma_max = 300e6;    // max naprężenie [Pa] = 300 MPa
+	
+	// Granice zmiennych
+	const double l_min = 0.2;   // 200 mm
+	const double l_max = 1.0;   // 1000 mm
+	const double d_min = 0.01;  // 10 mm
+	const double d_max = 0.05;  // 50 mm
+	
+	matrix y;
+	
+	// EKSTREMALNIE SILNE kary za wyjście poza granice zmiennych decyzyjnych
+	double penalty = 0.0;
+	
+	// Kara za długość poza zakresem - POTĘGA 5 i jeszcze większa stała!
+	if (l < l_min) {
+		penalty += 1e12 * pow((l_min - l) / l_min, 5);
+		l = l_min;  // przytnij do minimum
+	}
+	if (l > l_max) {
+		penalty += 1e12 * pow((l - l_max) / l_max, 5);
+		l = l_max;  // przytnij do maksimum
+	}
+	
+	// Kara za średnicę poza zakresem - POTĘGA 5 i jeszcze większa stała!
+	if (d < d_min) {
+		penalty += 1e12 * pow((d_min - d) / d_min, 5);
+		d = d_min;
+	}
+	if (d > d_max) {
+		penalty += 1e12 * pow((d - d_max) / d_max, 5);
+		d = d_max;
+	}
+	
+	// Dodatkowe kary za zbliżanie się do granic (bariera wewnętrzna) - DUŻO BARDZIEJ AGRESYWNE
+	double margin = 0.03;  // 3% margines (zwiększony z 2%)
+	if (l < l_min * (1.0 + margin)) {
+		penalty += 1e9 * pow((l_min * (1.0 + margin) - l) / l_min, 4);  // potęga 4, wielokrotnie większa stała
+	}
+	if (l > l_max * (1.0 - margin)) {
+		penalty += 1e9 * pow((l - l_max * (1.0 - margin)) / l_max, 4);
+	}
+	if (d < d_min * (1.0 + margin)) {
+		penalty += 1e9 * pow((d_min * (1.0 + margin) - d) / d_min, 4);
+	}
+	if (d > d_max * (1.0 - margin)) {
+		penalty += 1e9 * pow((d - d_max * (1.0 - margin)) / d_max, 4);
+	}
+	
+	// Ochrona przed wartościami niepoprawnymi
+	if (l <= 0 || d <= 0) {
+		y = 1e20;
+		return y;
+	}
+	
+	// Obliczenia
+	// Masa belki: m = rho * V = rho * (pi * d^2 / 4) * l
+	double masa = rho * M_PI * pow(d, 2) / 4.0 * l;  // [kg]
+	
+	// Ugięcie: u = (64*P*l^3)/(3*E*pi*d^4)
+	double u = (64.0 * P * pow(l, 3)) / (3.0 * E * M_PI * pow(d, 4));  // [m]
+	
+	// Naprężenie: sigma = (32*P*l)/(pi*d^3)
+	double sigma = (32.0 * P * l) / (M_PI * pow(d, 3));  // [Pa]
+	
+	// Funkcje celu w oryginalnych jednostkach
+	double f1 = masa;      // masa [kg]: ~0.7-3.5
+	double f2 = u;         // ugięcie [m]: ~0.00014-0.011
+	
+	// Normalizacja do zakresu [0,1] aby były porównywalne
+	double f1_norm = (masa - 0.7) / (3.5 - 0.7);           // 0-1
+	double f2_norm = (u - 0.00014) / (0.011 - 0.00014);    // 0-1
+	
+	// Funkcja wielokryterialna na znormalizowanych wartościach
+	// f(x) = w*f1(x) + (1-w)*f2(x)
+	y = w * f1_norm + (1.0 - w) * f2_norm;
+	
+	// BARDZO SILNE kary za naruszenie ograniczeń ugięcia i naprężenia
+	if (u > u_max) {
+		double violation = (u - u_max) / u_max;
+		penalty += 1e6 * pow(violation, 2);
+	}
+	
+	if (sigma > sigma_max) {
+		double violation = (sigma - sigma_max) / sigma_max;
+		penalty += 1e6 * pow(violation, 2);
+	}
+	
+	// Dodatkowe kary za zbliżanie się do granic ograniczeń (bariera wewnętrzna)
+	double safety_margin = 0.95;  // 95% wartości maksymalnej
+	if (u > u_max * safety_margin) {
+		double proximity = (u - u_max * safety_margin) / (u_max * (1.0 - safety_margin));
+		penalty += 1e4 * pow(proximity, 2);
+	}
+	
+	if (sigma > sigma_max * safety_margin) {
+		double proximity = (sigma - sigma_max * safety_margin) / (sigma_max * (1.0 - safety_margin));
+		penalty += 1e4 * pow(proximity, 2);
+	}
+	
+	// Dodaj wszystkie kary
+	y = y + penalty;
+	
+	return y;
+}
+

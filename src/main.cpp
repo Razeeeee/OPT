@@ -1985,6 +1985,124 @@ void lab5()
 	
 	csv_file.close();
 	cout << "Results saved to lab5_results.csv\n";
+	
+	// ===== PROBLEM RZECZYWISTY - OPTYMALIZACJA BELKI =====
+	cout << "\n=== PROBLEM RZECZYWISTY - OPTYMALIZACJA BELKI ===\n\n";
+	
+	// === WALIDACJA POPRAWNOŚCI IMPLEMENTACJI ===
+	cout << "=== WALIDACJA POPRAWNOSCI IMPLEMENTACJI ===\n";
+	cout << "Sprawdzenie dla l = 500 mm = 0.5 m, d = 25 mm = 0.025 m\n";
+	
+	double l_test = 0.5;   // 500 mm
+	double d_test = 0.025; // 25 mm
+	
+	const double P = 2000.0;           // 2 kN
+	const double E = 120e9;            // 120 GPa
+	const double rho = 8920.0;         // kg/m^3
+	
+	// Obliczenia testowe
+	double masa_test = rho * M_PI * pow(d_test, 2) / 4.0 * l_test;
+	double u_test = (64.0 * P * pow(l_test, 3)) / (3.0 * E * M_PI * pow(d_test, 4));
+	double sigma_test = (32.0 * P * l_test) / (M_PI * pow(d_test, 3));
+	
+	cout << "Masa belki:       m = " << masa_test << " kg (oczekiwane: ~2.19 kg)\n";
+	cout << "Ugięcie belki:    u = " << u_test * 1000 << " mm (oczekiwane: ~36.22 mm)\n";
+	cout << "Naprężenie belki: σ = " << sigma_test / 1e6 << " MPa (oczekiwane: ~651.9 MPa)\n";
+	cout << "\n";
+	
+	// === OPTYMALIZACJA WIELOKRYTERIALNA ===
+	cout << "=== ROZPOCZYNAM 101 OPTYMALIZACJI DLA w = 0 do 1 ===\n";
+	
+	ofstream csv_file_real("../data/lab5_real.csv");
+	
+	double epsilon_real = 1e-2;  // zmniejszona dokładność dla szybszego działania
+	int Nmax_real = 5000;        // zmniejszona liczba wywołań
+	
+	// Granice zmiennych decyzyjnych
+	double l_min = 0.2;   // 200 mm
+	double l_max = 1.0;   // 1000 mm
+	double d_min = 0.01;  // 10 mm
+	double d_max = 0.05;  // 50 mm
+	
+	// Dla w = 0, 0.01, 0.02, ..., 1.0 (101 wartości)
+	for (int w_idx = 0; w_idx <= 100; w_idx++)
+	{
+		double w = w_idx * 0.01;
+		
+		// Punkt startowy zależny od w
+		// Dla w=0 (tylko ugięcie): preferujemy większą średnicę, krótszą długość
+		// Dla w=1 (tylko masa): preferujemy mniejszą średnicę, krótszą długość
+		double l0, d0;
+		if (w < 0.33) {
+			// Priorytet: małe ugięcie -> duża średnica
+			l0 = l_min + (rand() / (double)RAND_MAX) * (l_max - l_min) * 0.5;  // krótsza belka
+			d0 = d_min + 0.5 * (d_max - d_min) + (rand() / (double)RAND_MAX) * (d_max - d_min) * 0.5;  // większa średnica
+		} else if (w > 0.67) {
+			// Priorytet: mała masa -> mała średnica, krótka długość
+			l0 = l_min + (rand() / (double)RAND_MAX) * (l_max - l_min) * 0.5;  // krótsza belka
+			d0 = d_min + (rand() / (double)RAND_MAX) * (d_max - d_min) * 0.5;  // mniejsza średnica
+		} else {
+			// Środek: losowy punkt
+			l0 = l_min + (rand() / (double)RAND_MAX) * (l_max - l_min);
+			d0 = d_min + (rand() / (double)RAND_MAX) * (d_max - d_min);
+		}
+		
+		cout << "[DEBUG] w = " << w << " | Punkt startowy: l0 = " << l0*1000 << " mm, d0 = " << d0*1000 << " mm\n";
+		
+		// Punkt startowy
+		matrix x0(2, 1);
+		x0(0) = l0;
+		x0(1) = d0;
+		
+		// Parametry: waga w
+		matrix ud1(1, 1);
+		ud1(0) = w;
+		
+		solution::clear_calls();
+		
+		cout << "[DEBUG] Rozpoczynam optymalizacje Powell dla w = " << w << "...\n";
+		// Optymalizacja metodą Powella
+		solution opt = Powell(ff5R, x0, epsilon_real, Nmax_real, ud1);
+		cout << "[DEBUG] Optymalizacja zakonczona. Wywolan funkcji: " << solution::f_calls << "\n";
+		
+		double l_star = opt.x(0);
+		double d_star = opt.x(1);
+		
+		cout << "[DEBUG] Punkt optymalny: l* = " << l_star*1000 << " mm, d* = " << d_star*1000 << " mm\n";
+		
+		// Oblicz masę, ugięcie i naprężenie w punkcie optymalnym
+		double masa_star = rho * M_PI * pow(d_star, 2) / 4.0 * l_star;
+		double u_star = (64.0 * P * pow(l_star, 3)) / (3.0 * E * M_PI * pow(d_star, 4));
+		double sigma_star = (32.0 * P * l_star) / (M_PI * pow(d_star, 3));
+		
+		cout << "[DEBUG] masa = " << masa_star << " kg, ugięcie = " << u_star*1000 << " mm, naprężenie = " << sigma_star/1e6 << " MPa\n";
+		
+		int f_calls = solution::f_calls;
+		
+		// Konwersja do mm i MPa dla czytelności w CSV
+		double l0_mm = l0 * 1000;
+		double d0_mm = d0 * 1000;
+		double l_star_mm = l_star * 1000;
+		double d_star_mm = d_star * 1000;
+		double sigma_star_MPa = sigma_star / 1e6;
+		
+		// Zapisz do CSV: l0[mm], d0[mm], l*[mm], d*[mm], masa*[kg], ugięcie*[m], naprężenie*[MPa], f_calls
+		csv_file_real << l0_mm << "," << d0_mm << "," 
+		              << l_star_mm << "," << d_star_mm << "," 
+		              << masa_star << "," << u_star << "," 
+		              << sigma_star_MPa << "," << f_calls << "\n";
+		
+		cout << "[DEBUG] Zapisano do CSV. Wiersz " << (w_idx + 1) << "/101 gotowy.\n";
+		cout << "-------------------------------------------\n";
+		
+		if (w_idx % 10 == 0)
+			cout << "Postep: w = " << w << " zakonczone (" << (w_idx + 1) << "/101)\n";
+	}
+	
+	csv_file_real.close();
+	cout << "\nWyniki zapisane do ../data/lab5_real.csv\n";
+	cout << "Kolumny: l0[mm], d0[mm], l*[mm], d*[mm], masa*[kg], ugięcie*[m], naprężenie*[MPa], f_calls\n";
+	cout << "\n=== LAB 5 PROBLEM RZECZYWISTY ZAKOŃCZONY ===\n";
 }
 
 void lab6()
